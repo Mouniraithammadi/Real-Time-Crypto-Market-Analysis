@@ -1,0 +1,10 @@
+# requirements.txt
+#
+# List all Python packages needed by producer.py.
+# Suggested dependencies (pin versions for reproducibility):
+#
+#  - websocket-client  : WebSocket connection to Binance stream
+#  - confluent-kafka   : High-performance Kafka producer client
+#      (alternative: kafka-python, but confluent-kafka is preferred for production)
+#  - python-dotenv     : Load environment variables from a .env file during local development
+

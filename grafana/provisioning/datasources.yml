@@ -1,0 +1,24 @@
+# datasources.yml
+#
+# PURPOSE: Grafana provisioning file to automatically configure the data source on startup.
+# Grafana reads this file from /etc/grafana/provisioning/datasources/ inside the container.
+#
+# STEPS TO CONFIGURE:
+#
+# 1. Choose the data source type that exposes the Gold Hudi tables:
+#    - Option A: PostgreSQL — if Gold data is mirrored into Postgres (simplest for Grafana).
+#    - Option B: Trino / Presto — if Hudi tables are registered in a Hive Metastore.
+#    - Option C: Spark Thrift Server — Grafana queries Hudi via JDBC (HiveServer2 protocol).
+#
+# 2. Fill in the connection fields:
+#    - name     : a friendly label shown in Grafana (e.g., "CryptoLake")
+#    - type     : "postgres", "trino", or the appropriate plugin type
+#    - url      : host:port of the chosen backend
+#    - database : the catalog/schema where Gold tables live
+#    - user / password : service account credentials (use Grafana secrets or env vars)
+#    - access   : "proxy" (Grafana server connects) or "direct" (browser connects)
+#
+# 3. Set isDefault: true so dashboards use this source by default.
+#
+# 4. Add any extra jsonData fields required by the driver
+#    (e.g., sslmode for Postgres, catalog for Trino).

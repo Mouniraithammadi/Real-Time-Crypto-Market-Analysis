@@ -1,0 +1,14 @@
+# dashboards.yml
+#
+# PURPOSE: Grafana provisioning file to tell Grafana where to load dashboard JSON files.
+# Grafana reads this from /etc/grafana/provisioning/dashboards/ inside the container.
+#
+# STEPS TO CONFIGURE:
+#
+# 1. Set the provider name (e.g., "CryptoDashboards").
+# 2. Set type: "file".
+# 3. Set options.path to the container path where dashboard JSON files are mounted
+#    (e.g., /etc/grafana/dashboards, mapped from ./grafana/dashboards/ on the host).
+# 4. Set updateIntervalSeconds to control how often Grafana rescans for new/updated JSON files.
+# 5. Optionally set allowUiUpdates: true to allow saving edits from the Grafana UI back to disk.
+

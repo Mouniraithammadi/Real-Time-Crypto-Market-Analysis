@@ -1,0 +1,19 @@
+{
+  "__comment__": "crypto_live.json — Grafana dashboard definition. Export from the Grafana UI and paste here.",
+  "__instructions__": [
+    "Build the dashboard in the Grafana UI first, then export it via:",
+    "  Dashboard -> Share -> Export -> Save to file",
+    "and replace this placeholder with the exported JSON.",
+    "",
+    "Required panels to implement:",
+    "  1. Live Price Chart  — time-series panel showing real-time close prices for all symbols.",
+    "  2. Moving Averages   — overlay SMA and EMA lines on the price chart.",
+    "  3. Volatility Gauge  — bar gauge or stat panel showing current volatility per symbol.",
+    "  4. Anomaly Markers   — scatter overlay or annotation on the price chart marking anomaly events.",
+    "  5. Anomaly Count 24h — single-stat or table panel counting anomalies per symbol today.",
+    "",
+    "Alert rules to configure (in Grafana Alerting):",
+    "  - Alert when anomaly_count in last 15 minutes > threshold (e.g., 5).",
+    "  - Alert when price changes by more than X% in a 1-minute window."
+  ]
+}

@@ -1,0 +1,4 @@
+# Silver layer — populated at runtime by silver_job.py
+# Contains 1-minute OHLCV aggregations per symbol (Hudi MoR table).
+# Record key: symbol + minute. Compaction triggered by Airflow (not inline).
+# Do NOT commit data files to Git.

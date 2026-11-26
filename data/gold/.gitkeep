@@ -1,0 +1,6 @@
+# Gold layer — populated at runtime by gold_job.py
+# Sub-tables:
+#   gold/indicators/ — SMA, EMA, volatility, volume_ratio per symbol per sliding window
+#   gold/alerts/     — anomaly rows (distance to KMeans centroid > 99th percentile)
+# Queried by Grafana for live dashboard panels.
+# Do NOT commit data files to Git.

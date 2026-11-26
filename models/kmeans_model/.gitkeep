@@ -1,0 +1,9 @@
+# This directory will store the trained KMeans PipelineModel saved by train_kmeans.py.
+#
+# After running train_kmeans.py, this folder will contain:
+#   - metadata/      : Spark ML pipeline metadata (stages, params)
+#   - stages/        : Serialized StandardScaler and KMeans model stages
+#   - threshold.json : 99th-percentile distance threshold used for anomaly flagging
+#
+# Do NOT commit trained model files to Git (add models/kmeans_model/stages/ to .gitignore).
+# Keep this .gitkeep so the empty directory is tracked by Git.
