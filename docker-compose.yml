@@ -1,233 +1,70 @@
-version: "3.8"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Real-Time Crypto Market Analysis — Infrastructure
-# Services: Zookeeper, Kafka, Kafka-UI, MinIO, Postgres,
-#           Airflow (init + webserver + scheduler), Spark (master + worker), Grafana
-# ─────────────────────────────────────────────────────────────────────────────
-
-x-airflow-common: &airflow-common
-  image: apache/airflow:2.9.1
-  environment:
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
-    AIRFLOW__CORE__FERNET_KEY: ""
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka:9092}
-    LAKE_PATH: ${LAKE_PATH:-/data}
-  volumes:
-    - ./airflow/dags:/opt/airflow/dags
-    - ./data:/data
-    - ./models:/models
-    - airflow-logs:/opt/airflow/logs
-  depends_on:
-    postgres:
-      condition: service_healthy
-  networks:
-    - crypto-net
-
-networks:
-  crypto-net:
-    driver: bridge
-
-volumes:
-  airflow-logs:
-  minio-data:
-  postgres-data:
-
-services:
-
-  # ── Zookeeper ────────────────────────────────────────────────────────────
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1
-    container_name: zookeeper
-    networks:
-      - crypto-net
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── Kafka ─────────────────────────────────────────────────────────────────
-  kafka:
-    image: confluentinc/cp-kafka:7.6.1
-    container_name: kafka
-    networks:
-      - crypto-net
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 48
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-
-  # ── Kafka UI (optional) ───────────────────────────────────────────────────
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    networks:
-      - crypto-net
-    ports:
-      - "8085:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-    depends_on:
-      kafka:
-        condition: service_healthy
-
-  # ── MinIO (S3-compatible object store for Hudi) ───────────────────────────
-  minio:
-    image: minio/minio:RELEASE.2024-05-01T01-11-10Z
-    container_name: minio
-    networks:
-      - crypto-net
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── PostgreSQL (Airflow metadata + Grafana) ───────────────────────────────
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    networks:
-      - crypto-net
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-airflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
-      POSTGRES_DB: ${POSTGRES_DB:-airflow}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-airflow}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── Airflow init (one-off) ────────────────────────────────────────────────
-  airflow-init:
-    <<: *airflow-common
-    container_name: airflow-init
-    command: >
-      bash -c "
-        airflow db init &&
-        airflow users create
-          --username ${AIRFLOW_ADMIN_USER:-admin}
-          --password ${AIRFLOW_ADMIN_PASSWORD:-admin}
-          --firstname Admin
-          --lastname User
-          --role Admin
-          --email admin@example.com
-      "
-    restart: on-failure
-
-  # ── Airflow webserver ─────────────────────────────────────────────────────
-  airflow-webserver:
-    <<: *airflow-common
-    container_name: airflow-webserver
-    ports:
-      - "8080:8080"
-    command: webserver
-    depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-    restart: always
-
-  # ── Airflow scheduler ─────────────────────────────────────────────────────
-  airflow-scheduler:
-    <<: *airflow-common
-    container_name: airflow-scheduler
-    command: scheduler
-    depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-    restart: always
-
-  # ── Spark master (optional — use spark-submit directly if preferred) ───────
-  spark-master:
-    image: bitnami/spark:3.4
-    container_name: spark-master
-    networks:
-      - crypto-net
-    ports:
-      - "7077:7077"
-      - "8081:8080"
-    environment:
-      SPARK_MODE: master
-      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
-      SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka:29092}
-      LAKE_PATH: ${LAKE_PATH:-/data}
-    volumes:
-      - ./data:/data
-      - ./models:/models
-      - ./spark:/spark
-
-  # ── Spark worker ──────────────────────────────────────────────────────────
-  spark-worker:
-    image: bitnami/spark:3.4
-    container_name: spark-worker
-    networks:
-      - crypto-net
-    environment:
-      SPARK_MODE: worker
-      SPARK_MASTER_URL: spark://spark-master:7077
-      SPARK_WORKER_MEMORY: 2G
-      SPARK_WORKER_CORES: 2
-      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka:29092}
-      LAKE_PATH: ${LAKE_PATH:-/data}
-    volumes:
-      - ./data:/data
-      - ./models:/models
-      - ./spark:/spark
-    depends_on:
-      - spark-master
-
-  # ── Grafana ───────────────────────────────────────────────────────────────
-  grafana:
-    image: grafana/grafana:10.4.2
-    container_name: grafana
-    networks:
-      - crypto-net
-    ports:
-      - "3000:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/etc/grafana/dashboards
-    depends_on:
-      - postgres
+# docker-compose.yml
+#
+# PURPOSE: Define and wire up all infrastructure services needed for the pipeline.
+#
+# SERVICES TO DECLARE:
+#
+#  zookeeper
+#    - Required by Kafka for cluster coordination.
+#    - Expose internal port 2181.
+#
+#  kafka
+#    - Message broker; expose port 9092 to the host.
+#    - Set KAFKA_ZOOKEEPER_CONNECT pointing at zookeeper.
+#    - Set KAFKA_ADVERTISED_LISTENERS so the producer and Spark can reach it.
+#    - Add a healthcheck so dependent services wait until Kafka is ready.
+#
+#  kafka-ui  (optional)
+#    - Web UI to inspect topics and consumer groups.
+#    - Expose port 8085 (or any free port).
+#
+#  minio
+#    - S3-compatible object storage used as the Hudi data lake root.
+#    - Expose ports 9000 (API) and 9001 (console).
+#    - Set MINIO_ROOT_USER and MINIO_ROOT_PASSWORD via environment variables.
+#    - Mount ./data as a volume for local FS mode (alternative to true S3).
+#
+#  postgres
+#    - Backend database for Airflow metadata (and optionally Grafana).
+#    - Expose port 5432 internally.
+#    - Set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB.
+#    - Add a healthcheck (pg_isready) so Airflow waits before starting.
+#
+#  airflow-init
+#    - One-off service (restart: on-failure) that runs:
+#        airflow db init && airflow users create (admin user)
+#    - Depends on postgres being healthy.
+#
+#  airflow-webserver
+#    - Airflow UI on port 8080.
+#    - Depends on airflow-init completing successfully.
+#    - Mount ./airflow/dags into /opt/airflow/dags.
+#
+#  airflow-scheduler
+#    - Airflow scheduler that triggers DAGs.
+#    - Shares the same DAGs volume as the webserver.
+#    - Depends on airflow-init.
+#
+#  spark-master  (optional — use spark-submit directly if preferred)
+#    - Spark standalone master node.
+#    - Expose port 7077 (Spark) and 8081 (web UI).
+#
+#  spark-worker  (optional)
+#    - One or more Spark workers attached to spark-master.
+#    - Set SPARK_MASTER_URL=spark://spark-master:7077.
+#    - Mount ./data and ./models so the lake and KMeans model are accessible.
+#
+#  grafana
+#    - Visualization layer on port 3000.
+#    - Mount ./grafana/provisioning into /etc/grafana/provisioning.
+#    - Mount ./grafana/dashboards into /etc/grafana/dashboards.
+#    - Set GF_SECURITY_ADMIN_PASSWORD via environment variable.
+#
+# GENERAL NOTES:
+#  - Create a single shared Docker network (e.g., "crypto-net") so every service
+#    can resolve each other by hostname.
+#  - Mount ./data as a shared volume into Spark, MinIO and Airflow so all layers
+#    read and write the same lake root (LAKE_PATH=./data).
+#  - Use a .env file for secrets (passwords, ports) and reference them with ${VAR}.
+#  - Set the KAFKA_BOOTSTRAP, LAKE_PATH, WATERMARK, WINDOW, SLIDE env vars
+#    as defined in the README configuration table.
